@@ -1,38 +1,44 @@
-const express = require('express');
-const sqlite3 = require('sqlite3').verbose();
-const app = express();
-app.use(express.json());
+const { default: makeWASocket, useMultiFileAuthState } = require('@whiskeysockets/baileys');
+const OpenAI = require('openai');
+const P = require('pino');
 
-const db = new sqlite3.Database('./jung.db');
-db.run(`CREATE TABLE IF NOT EXISTS data (id INTEGER PRIMARY KEY, income INTEGER DEFAULT 0, expense INTEGER DEFAULT 0)`);
-
-// Endpoint buat website baca data
-app.get('/data', (req,res)=>{
-  db.get('SELECT * FROM data WHERE id=1', (err,row)=> res.json(row || {income:0, expense:0}));
+const openai = new OpenAI({
+  apiKey: process.env.GROQ_API_KEY,
+  baseURL: "https://api.groq.com/openai/v1"
 });
 
-// Terima pesan WA dari Meta
-app.post('/webhook', (req,res)=>{
-  const msg = req.body.entry?.[0]?.changes?.[0]?.value?.messages?.[0];
-  if(!msg) return res.sendStatus(200);
+async function startBot() {
+  const { state, saveCreds } = await useMultiFileAuthState('auth_info');
 
-  const text = msg.text.body.toLowerCase();
-  const angka = parseInt(text.match(/\d+/)?.[0] || 0);
+  const sock = makeWASocket({
+    auth: state,
+    logger: P({ level: 'silent' })
+  });
 
-  if(text.includes('masuk') && angka){
-    db.run('UPDATE data SET income = income +? WHERE id=1', [angka]);
-  }
-  if(text.includes('keluar') && angka){
-    db.run('UPDATE data SET expense = expense +? WHERE id=1', [angka]);
-  }
-  res.sendStatus(200);
-});
+  sock.ev.on('creds.update', saveCreds);
 
-// Verifikasi webhook Meta
-app.get('/webhook', (req,res)=>{
-  if(req.query['hub.verify_token'] === 'jung2026'){
-    res.send(req.query['hub.challenge']);
-  } else res.sendStatus(403);
-});
+  sock.ev.on('messages.upsert', async ({ messages }) => {
+    const msg = messages[0];
+    if (!msg.message || msg.key.fromMe) return;
 
-app.listen(3000, ()=>console.log('Bot jalan'));
+    const text = msg.message.conversation || msg.message.extendedTextMessage?.text;
+    if (!text) return;
+
+    try {
+      const response = await openai.chat.completions.create({
+        model: "llama-3.1-8b-instant",
+        messages: [{ role: "user", content: text }]
+      });
+
+      const reply = response.choices[0].message.content;
+      await sock.sendMessage(msg.key.remoteJid, { text: reply });
+
+    } catch (err) {
+      console.error(err);
+    }
+  });
+
+  console.log('Bot WhatsApp jalan!');
+}
+
+startBot();
