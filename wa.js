@@ -2,7 +2,6 @@ const { default: makeWASocket, useMultiFileAuthState, DisconnectReason, printQRI
 const Groq = require('groq-sdk');
 const pino = require('pino');
 
-// Setup Groq
 const groq = new Groq({
   apiKey: process.env.GROQ_API_KEY,
 });
@@ -22,12 +21,11 @@ async function startBot() {
       console.log('\n=== SCAN QR INI DI WHATSAPP ===\n');
       printQRInTerminal(qr);
       console.log('\n===============================\n');
-      console.log('Buka WhatsApp > Titik 3 > Perangkat Tertaut > Tautkan Perangkat > Scan QR');
     }
 
     if (connection === 'close') {
       const shouldReconnect = lastDisconnect.error?.output?.statusCode!== DisconnectReason.loggedOut;
-      console.log('Koneksi terputus:', lastDisconnect.error, 'Reconnect:', shouldReconnect);
+      console.log('Koneksi terputus, Reconnect:', shouldReconnect);
       if (shouldReconnect) {
         startBot();
       }
@@ -42,4 +40,30 @@ async function startBot() {
     const msg = messages[0];
     if (!msg.message || msg.key.fromMe) return;
 
-    const text = msg.message.conversation ||
+    const text = msg.message.conversation || msg.message.extendedTextMessage?.text;
+    if (!text) return;
+
+    console.log('Pesan masuk:', text);
+
+    try {
+      const chatCompletion = await groq.chat.completions.create({
+        messages: [
+          { role: 'system', content: 'Kamu adalah asisten WhatsApp yang ramah.' },
+          { role: 'user', content: text }
+        ],
+        model: 'llama-3.1-8b-instant',
+        temperature: 0.7,
+        max_tokens: 500,
+      });
+
+      const reply = chatCompletion.choices[0]?.message?.content || 'Maaf, error.';
+      await sock.sendMessage(msg.key.remoteJid, { text: reply });
+    } catch (err) {
+      console.error('Error Groq:', err);
+      await sock.sendMessage(msg.key.remoteJid, { text: 'Maaf, ada error.' });
+    }
+  });
+}
+
+startBot();
+process.stdin.resume();
