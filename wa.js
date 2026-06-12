@@ -17,6 +17,13 @@ async function startBot() {
 
   sock.ev.on('creds.update', saveCreds);
 
+  // TAMPILIN QR CODE DI LOG
+  sock.ev.on('qr', qr => {
+    console.log('\n=== SCAN QR INI DI WHATSAPP ===');
+    console.log(qr);
+    console.log('===============================\n');
+  });
+
   sock.ev.on('messages.upsert', async ({ messages }) => {
     const msg = messages[0];
     if (!msg.message || msg.key.fromMe) return;
@@ -32,7 +39,6 @@ async function startBot() {
 
       const reply = response.choices[0].message.content;
       await sock.sendMessage(msg.key.remoteJid, { text: reply });
-
     } catch (err) {
       console.error(err);
     }
@@ -42,3 +48,4 @@ async function startBot() {
 }
 
 startBot();
+process.stdin.resume(); // biar nggak auto mati
