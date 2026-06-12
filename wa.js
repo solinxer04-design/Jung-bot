@@ -1,5 +1,10 @@
 require('dotenv').config();
 
+console.log('================================');
+console.log('BOT STARTING...');
+console.log('NODE VERSION:', process.version);
+console.log('GROQ API ADA:', !!process.env.GROQ_API_KEY);
+console.log('================================');
 const {
   default: makeWASocket,
   useMultiFileAuthState,
