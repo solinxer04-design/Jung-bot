@@ -47,10 +47,9 @@ async function startBot() {
     if (connection === 'open') {
       console.log('✅ Bot Connected');
 
-      // Minta pairing code kalau belum login
       if (!sock.authState.creds.registered) {
         try {
-          const phoneNumber = '6289664449690'; // GANTI DENGAN NOMOR KAMU
+          const phoneNumber = '6289664449690';
           const code = await sock.requestPairingCode(phoneNumber);
           console.log('');
           console.log('========================');
@@ -78,12 +77,10 @@ async function startBot() {
   sock.ev.on('messages.upsert', async ({ messages }) => {
     try {
       const msg = messages[0];
-
       if (!msg.message) return;
       if (msg.key.fromMe) return;
 
       const jid = msg.key.remoteJid;
-
       const text =
         msg.message?.conversation ||
         msg.message?.extendedTextMessage?.text ||
@@ -91,62 +88,33 @@ async function startBot() {
         msg.message?.videoMessage?.caption;
 
       if (!text) return;
-
       console.log(`[${jid}] ${text}`);
 
-      if (cooldown[jid] && Date.now() - cooldown[jid] < 2000) {
-        return;
-      }
-
+      if (cooldown[jid] && Date.now() - cooldown[jid] < 2000) return;
       cooldown[jid] = Date.now();
 
-      if (!chatHistory[jid]) {
-        chatHistory[jid] = [];
-      }
+      if (!chatHistory[jid]) chatHistory[jid] = [];
 
-      // MENU
       if (text === '!menu') {
         return sock.sendMessage(jid, {
-          text: `🤖 JUNG BOT AI
-
-!menu
-!ping
-!reset
-!ai pertanyaan
-
-Contoh:
-!ai siapa presiden indonesia`
+          text: `🤖 JUNG BOT AI\n!menu\n!ping\n!reset\n!ai pertanyaan\nContoh:\n!ai siapa presiden indonesia`
         });
       }
 
-      // PING
       if (text === '!ping') {
-        return sock.sendMessage(jid, {
-          text: '🏓 Pong!'
-        });
+        return sock.sendMessage(jid, { text: '🏓 Pong!' });
       }
 
-      // RESET
       if (text === '!reset') {
         chatHistory[jid] = [];
         saveDB();
-
-        return sock.sendMessage(jid, {
-          text: '✅ Riwayat percakapan dihapus.'
-        });
+        return sock.sendMessage(jid, { text: '✅ Riwayat percakapan dihapus.' });
       }
 
-      // Hanya respon!ai
-      if (!text.startsWith('!ai ')) {
-        return;
-      }
+      if (!text.startsWith('!ai ')) return;
 
       const prompt = text.slice(4);
-
-      chatHistory[jid].push({
-        role: 'user',
-        content: prompt
-      });
+      chatHistory[jid].push({ role: 'user', content: prompt });
 
       if (chatHistory[jid].length > 20) {
         chatHistory[jid] = chatHistory[jid].slice(-20);
@@ -154,3 +122,13 @@ Contoh:
 
       const completion = await groq.chat.completions.create({
         model: 'llama-3.1-8b-instant',
+        temperature: 0.7,
+        max_tokens: 500,
+        messages: [
+          { role: 'system', content: 'Kamu adalah asisten WhatsApp yang ramah dan membantu.' },
+         ...chatHistory[jid]
+        ]
+      });
+
+      const reply = completion.choices[0]?.message?.content || 'Maaf terjadi kesalahan.';
+      chatHistory
