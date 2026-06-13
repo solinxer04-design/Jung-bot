@@ -1,24 +1,17 @@
 require('dotenv').config();
 
-console.log('================================');
-console.log('BOT STARTING...');
-console.log('NODE VERSION:', process.version);
-console.log('GROQ API ADA:', !!process.env.GROQ_API_KEY);
-console.log('================================');
 const {
-  default: makeWASocket,
-  useMultiFileAuthState,
-  DisconnectReason,
-  fetchLatestBaileysVersion
+default: makeWASocket,
+useMultiFileAuthState,
+DisconnectReason
 } = require('@whiskeysockets/baileys');
 
-const qrcode = require('qrcode-terminal');
 const Groq = require('groq-sdk');
 const pino = require('pino');
 const fs = require('fs');
 
 const groq = new Groq({
-  apiKey: process.env.GROQ_API_KEY
+apiKey: process.env.GROQ_API_KEY
 });
 
 const DB_FILE = './chats.json';
@@ -26,113 +19,109 @@ const DB_FILE = './chats.json';
 let chatHistory = {};
 
 if (fs.existsSync(DB_FILE)) {
-  chatHistory = JSON.parse(fs.readFileSync(DB_FILE));
+try {
+chatHistory = JSON.parse(fs.readFileSync(DB_FILE));
+} catch {
+chatHistory = {};
+}
 }
 
 function saveDB() {
-  fs.writeFileSync(DB_FILE, JSON.stringify(chatHistory, null, 2));
+fs.writeFileSync(DB_FILE, JSON.stringify(chatHistory, null, 2));
 }
 
 const cooldown = {};
 
 async function startBot() {
+const { state, saveCreds } =
+await useMultiFileAuthState('auth_info');
 
-  const { state, saveCreds } =
-    await useMultiFileAuthState('auth_info');
+const sock = makeWASocket({
+auth: state,
+logger: pino({ level: 'silent' }),
+browser: ['Jung-Bot', 'Chrome', '1.0']
+});
 
-  const { version } =
-    await fetchLatestBaileysVersion();
+sock.ev.on('creds.update', saveCreds);
 
-  const sock = makeWASocket({
-    version,
-    auth: state,
-    logger: pino({ level: 'silent' }),
-    browser: ['Jung-Bot', 'Chrome', '1.0']
-  });
+// PAIRING CODE
+if (!state.creds.registered) {
+const phoneNumber = '6289664449690'; // GANTI DENGAN NOMOR ANDA
 
-  sock.ev.on('connection.update', async ({ connection, lastDisconnect, qr }) => {
-  if (qr) {
-    console.log('\n=== SCAN QR INI DI WHATSAPP ===\n');
-    qrcode.generate(qr, { small: true });
-    console.log('\n===============================\n');
-  }
+setTimeout(async () => {  
+  try {  
+    const code = await sock.requestPairingCode(phoneNumber);  
+    console.log('');  
+    console.log('========================');  
+    console.log('PAIRING CODE :', code);  
+    console.log('========================');  
+    console.log('');  
+  } catch (err) {  
+    console.error('Gagal membuat pairing code:', err);  
+  }  
+}, 5000);
 
-  if (connection === 'open') {
-    console.log('✅ Bot Connected');
-    
-    // Minta pairing code kalau belum login
-    if (!sock.authState.creds.registered) {
-      const code = await sock.requestPairingCode(process.env.PHONE_NUMBER);
-      console.log('\n=== PAIRING CODE KAMU ===');
-      console.log(code);
-      console.log('=========================\n');
-    }
-  }
+}
+
 sock.ev.on('connection.update', async ({
-    connection,
-    lastDisconnect,
-    qr
-  }) => {
+connection,
+lastDisconnect
+}) => {
 
-    if (qr) {
-      console.clear();
-      console.log('=== SCAN QR WHATSAPP ===');
-      qrcode.generate(qr, { small: true });
-    }
+if (connection === 'open') {  
+  console.log('✅ Bot Connected');  
+}  
 
-    if (connection === 'open') {
-      console.log('✅ Bot Connected');
-    }
+if (connection === 'close') {  
+  const shouldReconnect =  
+    lastDisconnect?.error?.output?.statusCode !==  
+    DisconnectReason.loggedOut;  
 
-    if (connection === 'close') {
-      const shouldReconnect =
-        lastDisconnect?.error?.output?.statusCode !==
-        DisconnectReason.loggedOut;
+  console.log('Reconnect:', shouldReconnect);  
 
-      if (shouldReconnect) {
-        startBot();
-      }
-    }
-  });
+  if (shouldReconnect) {  
+    startBot();  
+  }  
+}
 
-  sock.ev.on('messages.upsert', async ({ messages }) => {
-    try {
-      const msg = messages[0];
+});
 
-      if (!msg.message) return;
-      if (msg.key.fromMe) return;
+sock.ev.on('messages.upsert', async ({ messages }) => {
+try {
+const msg = messages[0];
 
-      const jid = msg.key.remoteJid;
+if (!msg.message) return;  
+  if (msg.key.fromMe) return;  
 
-      await sock.readMessages([msg.key]);
+  const jid = msg.key.remoteJid;  
 
-      const text =
-        msg.message?.conversation ||
-        msg.message?.extendedTextMessage?.text ||
-        msg.message?.imageMessage?.caption ||
-        msg.message?.videoMessage?.caption;
+  const text =  
+    msg.message?.conversation ||  
+    msg.message?.extendedTextMessage?.text ||  
+    msg.message?.imageMessage?.caption ||  
+    msg.message?.videoMessage?.caption;  
 
-      if (!text) return;
+  if (!text) return;  
 
-      console.log(`[${jid}] ${text}`);
+  console.log(`[${jid}] ${text}`);  
 
-      if (
-        cooldown[jid] &&
-        Date.now() - cooldown[jid] < 2000
-      ) {
-        return;
-      }
+  if (  
+    cooldown[jid] &&  
+    Date.now() - cooldown[jid] < 2000  
+  ) {  
+    return;  
+  }  
 
-      cooldown[jid] = Date.now();
+  cooldown[jid] = Date.now();  
 
-      if (!chatHistory[jid]) {
-        chatHistory[jid] = [];
-      }
+  if (!chatHistory[jid]) {  
+    chatHistory[jid] = [];  
+  }  
 
-      if (text === '!menu') {
-        return sock.sendMessage(jid, {
-          text: `
-🤖 MENU BOT AI
+  // MENU  
+  if (text === '!menu') {  
+    return sock.sendMessage(jid, {  
+      text: `🤖 JUNG BOT AI
 
 !menu
 !ping
@@ -140,76 +129,79 @@ sock.ev.on('connection.update', async ({
 !ai pertanyaan
 
 Contoh:
-!ai siapa presiden indonesia
-`
-        });
-      }
+!ai siapa presiden indonesia`
+});
+}
 
-      if (text === '!ping') {
-        return sock.sendMessage(jid, {
-          text: '🏓 Pong!'
-        });
-      }
+// PING  
+  if (text === '!ping') {  
+    return sock.sendMessage(jid, {  
+      text: '🏓 Pong!'  
+    });  
+  }  
 
-      if (text === '!reset') {
-        chatHistory[jid] = [];
-        saveDB();
+  // RESET  
+  if (text === '!reset') {  
+    chatHistory[jid] = [];  
+    saveDB();  
 
-        return sock.sendMessage(jid, {
-          text: '✅ Riwayat percakapan dihapus.'
-        });
-      }
+    return sock.sendMessage(jid, {  
+      text: '✅ Riwayat percakapan dihapus.'  
+    });  
+  }  
 
-      if (!text.startsWith('!ai ')) {
-        return;
-      }
+  // Hanya respon !ai  
+  if (!text.startsWith('!ai ')) {  
+    return;  
+  }  
 
-      const prompt = text.slice(4);
+  const prompt = text.slice(4);  
 
-      chatHistory[jid].push({
-        role: 'user',
-        content: prompt
-      });
+  chatHistory[jid].push({  
+    role: 'user',  
+    content: prompt  
+  });  
 
-      if (chatHistory[jid].length > 20) {
-        chatHistory[jid] =
-          chatHistory[jid].slice(-20);
-      }
+  if (chatHistory[jid].length > 20) {  
+    chatHistory[jid] =  
+      chatHistory[jid].slice(-20);  
+  }  
 
-      const completion =
-        await groq.chat.completions.create({
-          model: 'llama-3.1-8b-instant',
-          temperature: 0.7,
-          max_tokens: 500,
-          messages: [
-            {
-              role: 'system',
-              content:
-                'Kamu adalah asisten WhatsApp yang ramah dan membantu.'
-            },
-            ...chatHistory[jid]
-          ]
-        });
+  const completion =  
+    await groq.chat.completions.create({  
+      model: 'llama-3.1-8b-instant',  
+      temperature: 0.7,  
+      max_tokens: 500,  
+      messages: [  
+        {  
+          role: 'system',  
+          content:  
+            'Kamu adalah asisten WhatsApp yang ramah dan membantu.'  
+        },  
+        ...chatHistory[jid]  
+      ]  
+    });  
 
-      const reply =
-        completion.choices[0]?.message?.content ||
-        'Maaf terjadi kesalahan.';
+  const reply =  
+    completion.choices[0]?.message?.content ||  
+    'Maaf terjadi kesalahan.';  
 
-      chatHistory[jid].push({
-        role: 'assistant',
-        content: reply
-      });
+  chatHistory[jid].push({  
+    role: 'assistant',  
+    content: reply  
+  });  
 
-      saveDB();
+  saveDB();  
 
-      await sock.sendMessage(jid, {
-        text: reply
-      });
+  await sock.sendMessage(jid, {  
+    text: reply  
+  });  
 
-    } catch (err) {
-      console.error(err);
-    }
-  });
+} catch (err) {  
+  console.error(err);  
+}
+
+});
 }
 
 startBot();
