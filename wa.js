@@ -14,7 +14,7 @@ function saveDB() { fs.writeFileSync(DB_FILE, JSON.stringify(chatHistory, null, 
 const cooldown = {};
 
 async function startBot() {
-  const { state, saveCreds } = await useMultiFileAuthState('auth_info');
+  const { state, saveCreds } = await useMultiFileAuthState('auth_new');
   const sock = makeWASocket({ auth: state, logger: pino({ level: 'silent' }), browser: ['Jung-Bot', 'Chrome', '1.0'] });
   sock.ev.on('creds.update', saveCreds);
 
