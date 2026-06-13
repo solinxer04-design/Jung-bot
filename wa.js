@@ -8,7 +8,8 @@ console.log('================================');
 const {
   default: makeWASocket,
   useMultiFileAuthState,
-  DisconnectReason
+  DisconnectReason,
+  fetchLatestBaileysVersion
 } = require('@whiskeysockets/baileys');
 
 const qrcode = require('qrcode-terminal');
@@ -35,18 +36,36 @@ function saveDB() {
 const cooldown = {};
 
 async function startBot() {
+
   const { state, saveCreds } =
     await useMultiFileAuthState('auth_info');
 
+  const { version } =
+    await fetchLatestBaileysVersion();
+
   const sock = makeWASocket({
+    version,
     auth: state,
     logger: pino({ level: 'silent' }),
-    browser: ['AI-Bot', 'Chrome', '1.0']
+    browser: ['Jung-Bot', 'Chrome', '1.0']
   });
 
   sock.ev.on('creds.update', saveCreds);
 
-  sock.ev.on('connection.update', async ({
+if (!state.creds.registered) {
+
+  const code = await sock.requestPairingCode(
+    process.env.PHONE_NUMBER
+  );
+
+  console.log('');
+  console.log('====================');
+  console.log('PAIRING CODE:', code);
+  console.log('====================');
+  console.log('');
+}
+
+sock.ev.on('connection.update', async ({
     connection,
     lastDisconnect,
     qr
