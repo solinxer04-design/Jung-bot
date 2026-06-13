@@ -50,21 +50,24 @@ async function startBot() {
     browser: ['Jung-Bot', 'Chrome', '1.0']
   });
 
-  sock.ev.on('creds.update', saveCreds);
+  sock.ev.on('connection.update', async ({ connection, lastDisconnect, qr }) => {
+  if (qr) {
+    console.log('\n=== SCAN QR INI DI WHATSAPP ===\n');
+    qrcode.generate(qr, { small: true });
+    console.log('\n===============================\n');
+  }
 
-if (!state.creds.registered) {
-
-  const code = await sock.requestPairingCode(
-    process.env.PHONE_NUMBER
-  );
-
-  console.log('');
-  console.log('====================');
-  console.log('PAIRING CODE:', code);
-  console.log('====================');
-  console.log('');
-}
-
+  if (connection === 'open') {
+    console.log('✅ Bot Connected');
+    
+    // Minta pairing code kalau belum login
+    if (!sock.authState.creds.registered) {
+      const code = await sock.requestPairingCode(process.env.PHONE_NUMBER);
+      console.log('\n=== PAIRING CODE KAMU ===');
+      console.log(code);
+      console.log('=========================\n');
+    }
+  }
 sock.ev.on('connection.update', async ({
     connection,
     lastDisconnect,
