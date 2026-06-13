@@ -153,4 +153,4 @@ Contoh:
       }
 
       const completion = await groq.chat.completions.create({
-        model: 'llama
+        model: 'llama-3.1-8b-instant',
